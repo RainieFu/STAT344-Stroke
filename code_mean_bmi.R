@@ -16,14 +16,17 @@ dim(stroke_data)
 print("Dimensions after removing NA values and unknown values in smoking_status:")
 dim(stroke_data_clean)
 
-# Set seed for reproducibility
-set.seed(123)
+# conduct pilot study
+set.seed(81)
+pilot_sample <- stroke_data_clean %>%
+  sample_n(size = 30)
 
-# Calculate initial parameters for sample size calculation
+# Sample Size Calculation
 N <- nrow(stroke_data_clean)
-S2_guess <- var(stroke_data_clean$bmi)  # Using population variance as our guess
+S2_guess <- var(pilot_sample$bmi)  # Using pilot study to get guessed variance
+
 z_alpha_2 <- qnorm(0.975)  # 95% CI, so alpha/2 = 0.025
-delta <- 0.5  # Desired half-width of CI
+delta <- 0.025 * mean(pilot_sample$bmi)  # Desired half-width of CI
 
 # Calculate initial sample size (ignoring FPC)
 n <- (z_alpha_2^2 * S2_guess) / delta^2
@@ -44,6 +47,7 @@ cat("Final sample size with FPC (n*):", n_final, "\n")
 ################################
 ###SRS##########################
 ################################
+set.seed(123)
 sample_indices <- sample(1:N, n_final)
 sample <- stroke_data_clean[sample_indices, ]
 
@@ -53,10 +57,11 @@ pop_proportion_glucose_high <- mean(stroke_data_clean$glucose_high)
 
 # 1. Regression Estimator
 reg_model <- lm(bmi ~ avg_glucose_level, data = sample)
-b <- coef(reg_model)[2]
+b0 <- coef(reg_model)[1]  # Get intercept
+b1 <- coef(reg_model)[2]  # Get slope
 
 # Calculate regression estimate
-y_reg <- sample_mean_bmi + b * (pop_mean_glucose - sample_mean_glucose)
+y_reg <- b0 + b1 * pop_mean_glucose
 
 # Calculate standard error for regression estimate
 residuals <- residuals(reg_model)
@@ -120,7 +125,7 @@ cat("\nTrue Population Mean BMI:", round(mean(stroke_data_clean$bmi), 3), "\n")
 ################################
 ###Stratified Sampling##########
 ################################
-
+data <- stroke_data_clean
 data <- data %>%
   mutate(age_strata = case_when(
     age < 20 ~ "0-19",
@@ -181,8 +186,9 @@ stratified_sampling <- function(data, strata_info, seed = 123) {
 
     # 1. Regression Estimator
     reg_model_h <- lm(bmi ~ avg_glucose_level, data = stratum_samples[[i]])
-    b_h <- coef(reg_model_h)[2]
-    reg_est_h <- sample_mean_bmi_h + b_h * (pop_mean_glucose_h - sample_mean_glucose_h)
+    b_0_h <- coef(reg_model_h)[1]
+    b_1_h <- coef(reg_model_h)[2]
+    reg_est_h <- b_0_h + b_1_h * pop_mean_glucose_h
 
     # Variance of regression estimator
     residuals_reg_h <- residuals(reg_model_h)
